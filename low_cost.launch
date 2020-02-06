@@ -1,0 +1,73 @@
+<launch>
+  <arg name="camera"                default="camera"/>
+
+  <arg name="manager"                         default="realsense2_camera_manager"/>
+  <arg name="bond"                            default="false" />
+  <arg name="respawn"                         default="$(arg bond)" />
+  <arg name="rgb"                             default="color" />
+  <arg name="depth"                           default="depth" />
+  <arg name="align_depth"                     default="false"/>
+  <arg name="debayer_processing"              default="false" />
+  <arg name="depth_registered"                default="depth_registered"/>
+  <arg name="depth_registered_filtered"       default="$(arg depth_registered)"/>
+
+  <group ns="$(arg camera)">
+    <include file="$(find realsense2_camera)/launch/includes/nodelet.launch.xml">
+      <arg name="external_manager"  value="false"/>
+      <arg name="manager"           value="$(arg manager)"/>
+      <arg name="depth_width"       value="640"/>
+      <arg name="depth_height"      value="480"/>
+      <arg name="depth_fps"         value="15"/>
+      <arg name="align_depth"       value="$(arg align_depth)"/>
+
+      <arg name="color_width"       value="640"/>
+      <arg name="color_height"      value="480"/>
+      <arg name="color_fps"         value="15"/>
+
+      <arg name="enable_depth"      value="true"/>
+      <arg name="enable_color"      value="true"/>
+      <arg name="enable_fisheye"    value="false"/>
+
+      <arg name="enable_infra1"     value="true"/>
+      <arg name="enable_infra2"     value="true"/>
+      <arg name="infra_width"       value="640"/>
+      <arg name="infra_height"      value="480"/>
+      <arg name="infra_fps"         value="15"/>
+
+      <arg name="enable_pointcloud" value="false"/>
+      <arg name="enable_sync"       value="true"/>
+      <arg name="tf_prefix"         value="$(arg camera)"/>
+      <arg name="filters"           value="disparity,spatial,temporal"/>
+    </include>
+    <rosparam>
+      /camera/temporal/filter_smooth_delta: 80
+      /camera/temporal/filter_smooth_alpha: 0.04
+      /camera/spatial/filter_smooth_alpha: 0.25
+    </rosparam>
+    <!-- RGB processing -->
+    <include file="$(find rgbd_launch)/launch/includes/rgb.launch.xml">
+      <arg name="manager"                       value="$(arg manager)" />
+      <arg name="respawn"                       value="$(arg respawn)" />
+      <arg name="rgb"                           value="$(arg rgb)" />
+      <arg name="debayer_processing"            value="$(arg debayer_processing)" />
+    </include>
+    
+    <!-- align rgb with depth -->
+    <node pkg="nodelet" type="nodelet" name="register_depth"
+          args="load depth_image_proc/register $(arg manager) $(arg bond)" respawn="$(arg respawn)">
+      <remap from="rgb/camera_info"             to="$(arg rgb)/camera_info" />
+      <remap from="depth/camera_info"           to="$(arg depth)/camera_info" />
+      <remap from="depth/image_rect"            to="$(arg depth)/image_rect_raw" />
+      <remap from="depth_registered/image_rect" to="depth_registered/sw_registered/image_rect_raw" />
+    </node>
+
+    <!-- Publish registered XYZRGB point cloud with software registered input -->
+    <node pkg="nodelet" type="nodelet" name="points_xyzrgb_sw_registered"
+          args="load depth_image_proc/point_cloud_xyzrgb $(arg manager) $(arg bond)" respawn="$(arg respawn)">
+      <remap from="rgb/image_rect_color"        to="$(arg rgb)/image_rect_color" />
+      <remap from="rgb/camera_info"             to="$(arg rgb)/camera_info" />
+      <remap from="depth_registered/image_rect" to="$(arg depth_registered_filtered)/sw_registered/image_rect_raw" />
+      <remap from="depth_registered/points"     to="$(arg depth_registered)/points" />
+    </node>
+  </group>
+</launch>
